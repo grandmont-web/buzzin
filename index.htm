@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>專業課堂搶答系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; }
+        .buzzer-btn { transition: all 0.1s ease-in-out; }
+        .buzzer-btn:active:not(:disabled) { transform: scale(0.95); }
+        .hidden { display: none !important; }
+        /* 避免行動裝置選取文字干擾操作 */
+        .no-select { user-select: none; -webkit-user-select: none; }
+    </style>
+</head>
+<body class="h-screen w-screen overflow-x-hidden flex flex-col no-select">
+
+    <!-- 頂部導航列 -->
+    <header class="bg-blue-600 text-white p-4 shadow-md flex justify-between items-center shrink-0">
+        <h1 class="text-xl font-bold">課堂互動搶答系統</h1>
+        <div id="userInfo" class="text-sm">載入中...</div>
+    </header>
+
+    <!-- 主要內容區 -->
+    <main class="flex-grow relative overflow-y-auto p-4 flex flex-col items-center">
+        
+        <!-- 畫面 1：首頁 (選擇角色) -->
+        <section id="view-home" class="w-full max-w-md bg-white rounded-xl shadow-lg p-6 mt-10 text-center">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6">請選擇您的身份</h2>
+
+            <!-- 錯誤提示區塊 (預設隱藏) -->
+            <div id="auth-error-message" class="hidden mb-6 bg-red-50 border-l-4 border-red-500 p-4 text-left rounded shadow-sm">
+                <h3 class="text-red-800 font-bold flex items-center">
+                    <span class="mr-2">⚠️</span> Firebase 設定錯誤
+                </h3>
+                <p class="text-red-700 text-sm mt-2">系統偵測到您的 Firebase 尚未啟用「匿名登入」功能，請依照以下步驟修復：</p>
+                <ol class="list-decimal ml-5 mt-2 text-sm text-red-700 space-y-1">
+                    <li>前往 Firebase 控制台 (Firebase Console)</li>
+                    <li>進入專案 <strong>buzz-in-aa336</strong></li>
+                    <li>點選左側選單的 <strong>Authentication</strong> (驗證)</li>
+                    <li>切換到 <strong>Sign-in method</strong> (登入方式) 頁籤</li>
+                    <li>找到 <strong>匿名 (Anonymous)</strong>，將其狀態設為「啟用」並儲存</li>
+                    <li>重新整理此網頁</li>
+                </ol>
+            </div>
+
+            <div class="space-y-4">
+                <button onclick="app.showView('view-host-setup')" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow">
+                    👩‍🏫 我是老師 (建立場次)
+                </button>
+                <button onclick="app.showView('view-student-join')" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg shadow">
+                    🙋‍♂️ 我是學生 (加入搶答)
+                </button>
+                <button onclick="app.showView('view-display-join')" class="w-full bg-purple-500 hover:bg-purple-600 text-white font-bold py-3 px-4 rounded-lg shadow">
+                    📺 開啟展示大螢幕
+                </button>
+            </div>
+        </section>
+
+        <!-- 畫面 2：老師建立場次 -->
+        <section id="view-host-setup" class="w-full max-w-md bg-white rounded-xl shadow-lg p-6 mt-10 hidden">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">建立新搶答場次</h2>
+            <p class="text-gray-600 mb-6">系統將產生一組代碼供學生加入。</p>
+            <button onclick="app.createSession()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow mb-4">
+                立即建立場次
+            </button>
+            <button onclick="app.showView('view-home')" class="w-full bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">
+                返回
+            </button>
+        </section>
+
+        <!-- 畫面 3：學生加入 -->
+        <section id="view-student-join" class="w-full max-w-md bg-white rounded-xl shadow-lg p-6 mt-10 hidden">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">加入搶答場次</h2>
+            <input type="text" id="join-session-code" placeholder="請輸入 6 碼場次代碼" class="w-full border-2 border-gray-300 p-3 rounded-lg mb-4 text-center text-xl uppercase" maxlength="6">
+            <input type="text" id="join-student-name" placeholder="請輸入您的姓名或座號" class="w-full border-2 border-gray-300 p-3 rounded-lg mb-6 text-center text-xl">
+            <button onclick="app.joinAsStudent()" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg shadow mb-4">
+                進入搶答
+            </button>
+            <button onclick="app.showView('view-home')" class="w-full bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">
+                返回
+            </button>
+        </section>
+
+        <!-- 畫面 4：大螢幕加入 -->
+        <section id="view-display-join" class="w-full max-w-md bg-white rounded-xl shadow-lg p-6 mt-10 hidden">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">開啟展示大螢幕</h2>
+            <input type="text" id="display-session-code" placeholder="請輸入 6 碼場次代碼" class="w-full border-2 border-gray-300 p-3 rounded-lg mb-6 text-center text-xl uppercase" maxlength="6">
+            <button onclick="app.joinAsDisplay()" class="w-full bg-purple-500 hover:bg-purple-600 text-white font-bold py-3 px-4 rounded-lg shadow mb-4">
+                開始投影
+            </button>
+            <button onclick="app.showView('view-home')" class="w-full bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">
+                返回
+            </button>
+        </section>
+
+        <!-- 畫面 5：老師控制台 -->
+        <section id="view-host-dashboard" class="w-full max-w-4xl hidden flex-col md:flex-row gap-6">
+            <!-- 左側控制面板 -->
+            <div class="w-full md:w-1/3 bg-white rounded-xl shadow-lg p-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-2">場次資訊</h2>
+                <div class="bg-blue-100 text-blue-800 text-3xl font-mono text-center py-4 rounded-lg mb-4 font-bold tracking-widest" id="host-code-display">------</div>
+                
+                <div id="qrcode-container" class="flex justify-center mb-6 p-2 bg-white rounded"></div>
+
+                <hr class="my-4">
+                <h3 class="font-bold text-gray-700 mb-3">全局控制</h3>
+                <div class="space-y-3">
+                    <button onclick="app.resetBuzzer()" class="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 rounded shadow">
+                        🔄 重置搶答燈 (重新開始)
+                    </button>
+                    <button id="btn-toggle-lock" onclick="app.toggleGlobalLock()" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded shadow">
+                        🔒 暫停所有搶答
+                    </button>
+                </div>
+            </div>
+
+            <!-- 右側學生列表 -->
+            <div class="w-full md:w-2/3 bg-white rounded-xl shadow-lg p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-gray-800">參賽者名單 & 記分板</h2>
+                    <span id="host-status-badge" class="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-bold">開放搶答中</span>
+                </div>
+                
+                <div id="host-winner-alert" class="hidden bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4 rounded shadow-sm">
+                    <p class="font-bold text-lg">🎉 搶答成功：<span id="host-winner-name">---</span></p>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">狀態</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">姓名</th>
+                                <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">分數</th>
+                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="host-participants-list" class="bg-white divide-y divide-gray-200">
+                            <!-- JS 動態生成 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- 畫面 6：學生搶答器 -->
+        <section id="view-student-buzzer" class="w-full max-w-md hidden flex-col items-center justify-center h-full pt-10">
+            <div class="text-center mb-8">
+                <h2 class="text-2xl font-bold text-gray-800" id="student-display-name">參賽者姓名</h2>
+                <p class="text-gray-500">目前分數：<span id="student-score" class="font-bold text-blue-600 text-xl">0</span></p>
+            </div>
+
+            <!-- 大按鈕 -->
+            <button id="main-buzzer-btn" onclick="app.buzzIn()" disabled
+                class="buzzer-btn w-64 h-64 rounded-full text-white text-4xl font-bold shadow-[0_10px_0_rgb(185,28,28)] active:shadow-[0_0px_0_rgb(185,28,28)] active:translate-y-2 flex items-center justify-center mx-auto bg-gray-400 cursor-not-allowed">
+                等待中
+            </button>
+
+            <div id="student-status-msg" class="mt-10 text-xl font-bold text-center text-gray-600">
+                請等待老師開放搶答
+            </div>
+        </section>
+
+        <!-- 畫面 7：大螢幕展示 -->
+        <section id="view-display-screen" class="w-full max-w-6xl hidden flex-col h-full">
+            <div class="text-center mb-8 bg-white p-6 rounded-xl shadow-md">
+                <h2 class="text-4xl font-bold text-gray-800">請加入場次代碼：<span id="display-room-code" class="text-blue-600 tracking-widest font-mono">------</span></h2>
+            </div>
+            
+            <!-- 搶答成功強烈提示 -->
+            <div id="display-winner-banner" class="hidden mb-8 bg-gradient-to-r from-yellow-400 via-red-500 to-pink-500 text-white p-10 rounded-2xl shadow-2xl text-center transform transition-all scale-105 border-4 border-yellow-300">
+                <h1 class="text-6xl font-extrabold mb-4 drop-shadow-lg">⚡ 搶答成功 ⚡</h1>
+                <p class="text-5xl font-bold drop-shadow-md" id="display-winner-name">王小明</p>
+            </div>
+
+            <!-- 分數網格 -->
+            <div id="display-participants-grid" class="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <!-- JS 動態生成 -->
+            </div>
+        </section>
+
+    </main>
+
+    <!-- 訊息提示框組件 -->
+    <div id="toast-container" class="fixed bottom-5 left-1/2 transform -translate-x-1/2 z-50 flex flex-col gap-2"></div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, query, serverTimestamp, increment } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // 您的專屬 Firebase 設定
+        const firebaseConfig = {
+            apiKey: "AIzaSyB2f-W4rWXsAql4bWKUStzadeAaHZVcY7o",
+            authDomain: "buzz-in-aa336.firebaseapp.com",
+            projectId: "buzz-in-aa336",
+            storageBucket: "buzz-in-aa336.firebasestorage.app",
+            messagingSenderId: "789141653243",
+            appId: "1:789141653243:web:28fdd18717993ae49bd25e"
+        };
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'buzz-in-app';
+        
+        const fbApp = initializeApp(firebaseConfig);
+        const auth = getAuth(fbApp);
+        const db = getFirestore(fbApp);
+
+        // 全局應用程式狀態
+        const state = {
+            user: null,
+            sessionId: null,
+            participantId: null, // 學生專用
+            participants: [],    // 記憶體內緩存的參賽者資料
+            sessionData: null,   // 記憶體內緩存的場次資料
+            unsubSession: null,
+            unsubParticipants: null
+        };
+
+        // --- 核心共用功能 ---
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const colors = {
+                success: 'bg-green-500',
+                error: 'bg-red-500',
+                info: 'bg-blue-500',
+                warning: 'bg-yellow-500'
+            };
+            toast.className = `${colors[type]} text-white px-6 py-3 rounded-full shadow-lg font-bold text-center transition-opacity duration-500 opacity-100`;
+            toast.innerText = message;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.classList.replace('opacity-100', 'opacity-0');
+                setTimeout(() => toast.remove(), 500);
+            }, 3000);
+        }
+
+        function showView(viewId) {
+            const views = ['view-home', 'view-host-setup', 'view-student-join', 'view-display-join', 'view-host-dashboard', 'view-student-buzzer', 'view-display-screen'];
+            views.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    if (id === viewId) {
+                        el.classList.remove('hidden');
+                        if (id === 'view-host-dashboard' || id === 'view-student-buzzer' || id === 'view-display-screen') {
+                            el.classList.add('flex'); // 確保 flexbox 佈局正確
+                        }
+                    } else {
+                        el.classList.add('hidden');
+                        el.classList.remove('flex');
+                    }
+                }
+            });
+        }
+
+        function generateShortCode() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 排除易混淆字元 I, O, 1, 0
+            let result = '';
+            for (let i = 0; i < 6; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return result;
+        }
+
+        function getPublicSessionRef(sessionId) {
+            return doc(db, 'artifacts', appId, 'public', 'data', 'sessions', sessionId);
+        }
+
+        function getParticipantsCollectionRef(sessionId) {
+            return collection(db, 'artifacts', appId, 'public', 'data', 'sessions', sessionId, 'participants');
+        }
+
+        function getParticipantDocRef(sessionId, uid) {
+            return doc(db, 'artifacts', appId, 'public', 'data', 'sessions', sessionId, 'participants', uid);
+        }
+
+        // --- 老師 (主控端) 功能 ---
+
+        async function createSession() {
+            if (!state.user) return showToast('尚未完成驗證，請稍候', 'error');
+            
+            const newCode = generateShortCode();
+            state.sessionId = newCode;
+            
+            try {
+                const sessionRef = getPublicSessionRef(newCode);
+                await setDoc(sessionRef, {
+                    hostId: state.user.uid,
+                    isLocked: true,
+                    winnerUid: null,
+                    createdAt: serverTimestamp()
+                });
+                
+                showToast(`場次 ${newCode} 建立成功！`, 'success');
+                initHostDashboard();
+            } catch (error) {
+                console.error("Create session error:", error);
+                showToast('建立場次失敗，請確認 Firebase 資料庫權限', 'error');
+            }
+        }
+
+        function initHostDashboard() {
+            showView('view-host-dashboard');
+            document.getElementById('host-code-display').innerText = state.sessionId;
+            
+            // 產生 QRCode
+            document.getElementById('qrcode-container').innerHTML = ''; 
+            const joinUrl = `${window.location.href.split('?')[0]}?code=${state.sessionId}`;
+            new QRCode(document.getElementById("qrcode-container"), {
+                text: joinUrl,
+                width: 128,
+                height: 128,
+                colorDark : "#000000",
+                colorLight : "#ffffff",
+                correctLevel : QRCode.CorrectLevel.M
+            });
+
+            startSessionListeners('host');
+        }
+
+        async function toggleGlobalLock() {
+            if (!state.sessionId || !state.sessionData) return;
+            const sessionRef = getPublicSessionRef(state.sessionId);
+            const newState = !state.sessionData.isLocked;
+            try {
+                await updateDoc(sessionRef, { isLocked: newState });
+            } catch (error) {
+                console.error("Update lock error", error);
+            }
+        }
+
+        async function resetBuzzer() {
+            if (!state.sessionId) return;
+            const sessionRef = getPublicSessionRef(state.sessionId);
+            try {
+                await updateDoc(sessionRef, { winnerUid: null, isLocked: false });
+                showToast('搶答燈已重置', 'success');
+            } catch (error) {
+                console.error("Reset buzzer error", error);
+            }
+        }
+
+        async function adjustScore(uid, amount) {
+            if (!state.sessionId) return;
+            const partRef = getParticipantDocRef(state.sessionId, uid);
+            try {
+                await updateDoc(partRef, { score: increment(amount) });
+            } catch (error) {
+                console.error("Adjust score error", error);
+                showToast('調整分數失敗', 'error');
+            }
+        }
+
+        async function toggleParticipantLock(uid, currentLockState) {
+            if (!state.sessionId) return;
+            const partRef = getParticipantDocRef(state.sessionId, uid);
+            try {
+                await updateDoc(partRef, { isIndividualLocked: !currentLockState });
+            } catch (error) {
+                console.error("Individual lock error", error);
+            }
+        }
+
+        function renderHostParticipants() {
+            const tbody = document.getElementById('host-participants-list');
+            tbody.innerHTML = '';
+            
+            const sortedParticipants = [...state.participants].sort((a, b) => b.score - a.score);
+
+            sortedParticipants.forEach(p => {
+                const tr = document.createElement('tr');
+                const isWinner = state.sessionData?.winnerUid === p.uid;
+                
+                let statusHtml = p.isIndividualLocked 
+                    ? `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">已禁言</span>`
+                    : `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">正常</span>`;
+                
+                if (isWinner) {
+                    statusHtml = `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800 animate-pulse">⚡ 搶答成功</span>`;
+                }
+
+                tr.innerHTML = `
+                    <td class="px-4 py-4 whitespace-nowrap">${statusHtml}</td>
+                    <td class="px-4 py-4 whitespace-nowrap font-medium text-gray-900">${p.name}</td>
+                    <td class="px-4 py-4 whitespace-nowrap text-center text-xl font-bold text-blue-600">${p.score}</td>
+                    <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <button onclick="app.adjustScore('${p.uid}', 1)" class="text-green-600 hover:text-green-900 bg-green-50 px-2 py-1 rounded mr-2">+1分</button>
+                        <button onclick="app.adjustScore('${p.uid}', -1)" class="text-red-600 hover:text-red-900 bg-red-50 px-2 py-1 rounded mr-2">-1分</button>
+                        <button onclick="app.toggleParticipantLock('${p.uid}', ${p.isIndividualLocked})" class="text-gray-600 hover:text-gray-900 bg-gray-100 px-2 py-1 rounded">
+                            ${p.isIndividualLocked ? '解鎖' : '禁用'}
+                        </button>
+                    </td>
+                `;
+                if(isWinner) tr.classList.add('bg-yellow-50');
+                tbody.appendChild(tr);
+            });
+        }
+
+        // --- 學生 (參賽端) 功能 ---
+
+        async function joinAsStudent() {
+            const codeInput = document.getElementById('join-session-code').value.trim().toUpperCase();
+            const nameInput = document.getElementById('join-student-name').value.trim();
+
+            if (codeInput.length !== 6 || !nameInput) {
+                return showToast('請填寫完整代碼與姓名', 'warning');
+            }
+
+            if (!state.user) return showToast('尚未完成驗證', 'error');
+
+            const sessionRef = getPublicSessionRef(codeInput);
+            try {
+                const docSnap = await getDoc(sessionRef);
+                if (!docSnap.exists()) {
+                    return showToast('找不到該場次，請確認代碼', 'error');
+                }
+
+                state.sessionId = codeInput;
+                state.participantId = state.user.uid;
+
+                const partRef = getParticipantDocRef(state.sessionId, state.participantId);
+                await setDoc(partRef, {
+                    uid: state.participantId,
+                    name: nameInput,
+                    score: 0,
+                    isIndividualLocked: false,
+                    joinedAt: serverTimestamp()
+                }, { merge: true });
+
+                showToast('成功加入！', 'success');
+                initStudentBuzzer(nameInput);
+            } catch (error) {
+                console.error("Join error", error);
+                showToast('加入失敗，請重試', 'error');
+            }
+        }
+
+        function initStudentBuzzer(name) {
+            showView('view-student-buzzer');
+            document.getElementById('student-display-name').innerText = name;
+            startSessionListeners('student');
+        }
+
+        async function buzzIn() {
+            if (!state.sessionId || !state.participantId || !state.sessionData) return;
+            
+            const myData = state.participants.find(p => p.uid === state.participantId);
+            if (state.sessionData.isLocked || state.sessionData.winnerUid || (myData && myData.isIndividualLocked)) {
+                return;
+            }
+
+            const sessionRef = getPublicSessionRef(state.sessionId);
+            try {
+                await updateDoc(sessionRef, {
+                    winnerUid: state.participantId,
+                    isLocked: true 
+                });
+                navigator.vibrate && navigator.vibrate(200); 
+            } catch (error) {
+                console.error("Buzz in error", error);
+            }
+        }
+
+        function updateStudentUI() {
+            if (!state.sessionData || !state.participantId) return;
+
+            const btn = document.getElementById('main-buzzer-btn');
+            const msg = document.getElementById('student-status-msg');
+            const scoreDisplay = document.getElementById('student-score');
+            
+            const myData = state.participants.find(p => p.uid === state.participantId);
+            if (myData) {
+                scoreDisplay.innerText = myData.score;
+            }
+
+            const isGlobalLocked = state.sessionData.isLocked;
+            const winnerUid = state.sessionData.winnerUid;
+            const isIndividuallyLocked = myData?.isIndividualLocked;
+
+            if (winnerUid === state.participantId) {
+                btn.className = "buzzer-btn w-64 h-64 rounded-full text-white text-4xl font-bold mx-auto flex items-center justify-center shadow-[0_10px_0_rgb(202,138,4)] active:translate-y-2 bg-yellow-500 cursor-default ring-8 ring-yellow-300 animate-pulse";
+                btn.innerText = "⚡ 成功 ⚡";
+                btn.disabled = true;
+                msg.innerText = "太棒了！您搶到了！";
+                msg.className = "mt-10 text-2xl font-bold text-center text-yellow-600 animate-bounce";
+            } else if (winnerUid) {
+                btn.className = "buzzer-btn w-64 h-64 rounded-full text-white text-4xl font-bold mx-auto flex items-center justify-center shadow-none bg-gray-400 cursor-not-allowed opacity-70";
+                btn.innerText = "已被搶走";
+                btn.disabled = true;
+                msg.innerText = "下次手腳要快點喔！";
+                msg.className = "mt-10 text-xl font-bold text-center text-gray-500";
+            } else if (isGlobalLocked || isIndividuallyLocked) {
+                btn.className = "buzzer-btn w-64 h-64 rounded-full text-white text-4xl font-bold mx-auto flex items-center justify-center shadow-[0_10px_0_rgb(153,27,27)] bg-red-600 cursor-not-allowed opacity-80";
+                btn.innerText = "🔒 鎖定";
+                btn.disabled = true;
+                msg.innerText = isIndividuallyLocked ? "您目前被暫停搶答" : "請等待老師開放搶答...";
+                msg.className = "mt-10 text-xl font-bold text-center text-red-500";
+            } else {
+                btn.className = "buzzer-btn w-64 h-64 rounded-full text-white text-5xl font-extrabold mx-auto flex items-center justify-center shadow-[0_15px_0_rgb(21,128,61)] active:shadow-[0_0px_0_rgb(21,128,61)] active:translate-y-4 bg-green-500 hover:bg-green-400 cursor-pointer transition-all";
+                btn.innerText = "按我！";
+                btn.disabled = false;
+                msg.innerText = "🟢 準備搶答！";
+                msg.className = "mt-10 text-2xl font-bold text-center text-green-600 animate-pulse";
+            }
+        }
+
+        // --- 大螢幕展示功能 ---
+
+        async function joinAsDisplay() {
+            const codeInput = document.getElementById('display-session-code').value.trim().toUpperCase();
+            if (codeInput.length !== 6) return showToast('請輸入有效的 6 碼代碼', 'warning');
+
+            const sessionRef = getPublicSessionRef(codeInput);
+            try {
+                const docSnap = await getDoc(sessionRef);
+                if (!docSnap.exists()) {
+                    return showToast('找不到該場次', 'error');
+                }
+                state.sessionId = codeInput;
+                showView('view-display-screen');
+                document.getElementById('display-room-code').innerText = codeInput;
+                startSessionListeners('display');
+            } catch (error) {
+                console.error("Display join error", error);
+            }
+        }
+
+        function renderDisplayScreen() {
+            if (!state.sessionData) return;
+
+            const winnerBanner = document.getElementById('display-winner-banner');
+            const winnerNameEl = document.getElementById('display-winner-name');
+            const winnerUid = state.sessionData.winnerUid;
+
+            if (winnerUid) {
+                const winnerObj = state.participants.find(p => p.uid === winnerUid);
+                winnerNameEl.innerText = winnerObj ? winnerObj.name : "未知參賽者";
+                winnerBanner.classList.remove('hidden');
+            } else {
+                winnerBanner.classList.add('hidden');
+            }
+
+            const grid = document.getElementById('display-participants-grid');
+            grid.innerHTML = '';
+            
+            const sortedParticipants = [...state.participants].sort((a, b) => b.score - a.score);
+
+            sortedParticipants.forEach(p => {
+                const isWinner = p.uid === winnerUid;
+                const cardClass = isWinner 
+                    ? "bg-yellow-100 border-4 border-yellow-400 transform scale-105 shadow-xl" 
+                    : "bg-white border-2 border-gray-100 shadow-md";
+
+                const card = document.createElement('div');
+                card.className = `rounded-2xl p-6 text-center transition-all duration-300 flex flex-col justify-center items-center h-40 ${cardClass}`;
+                card.innerHTML = `
+                    <div class="text-2xl font-bold text-gray-800 mb-2 truncate w-full">${p.name}</div>
+                    <div class="text-5xl font-black text-blue-600">${p.score}</div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        // --- 資料同步監聽器 ---
+
+        function startSessionListeners(role) {
+            if (!state.sessionId) return;
+
+            if (state.unsubSession) state.unsubSession();
+            if (state.unsubParticipants) state.unsubParticipants();
+
+            const sessionRef = getPublicSessionRef(state.sessionId);
+            const participantsRef = getParticipantsCollectionRef(state.sessionId);
+
+            state.unsubSession = onSnapshot(sessionRef, (doc) => {
+                if (doc.exists()) {
+                    state.sessionData = doc.data();
+                    
+                    if (role === 'host') {
+                        updateHostUI();
+                    } else if (role === 'student') {
+                        updateStudentUI();
+                    } else if (role === 'display') {
+                        renderDisplayScreen();
+                    }
+                }
+            }, (error) => {
+                console.error("Session sync error:", error);
+                showToast("連線中斷，請重整頁面", "error");
+            });
+
+            state.unsubParticipants = onSnapshot(participantsRef, (snapshot) => {
+                state.participants = [];
+                snapshot.forEach((doc) => {
+                    state.participants.push(doc.data());
+                });
+                
+                if (role === 'host') {
+                    renderHostParticipants();
+                } else if (role === 'student') {
+                    updateStudentUI();
+                } else if (role === 'display') {
+                    renderDisplayScreen();
+                }
+            }, (error) => {
+                console.error("Participants sync error:", error);
+            });
+        }
+
+        function updateHostUI() {
+            if (!state.sessionData) return;
+
+            const btnLock = document.getElementById('btn-toggle-lock');
+            const statusBadge = document.getElementById('host-status-badge');
+            const winnerAlert = document.getElementById('host-winner-alert');
+            const winnerName = document.getElementById('host-winner-name');
+
+            if (state.sessionData.isLocked) {
+                btnLock.innerText = "🔓 解鎖所有搶答";
+                btnLock.className = "w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded shadow";
+                statusBadge.innerText = "已暫停搶答";
+                statusBadge.className = "px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm font-bold";
+            } else {
+                btnLock.innerText = "🔒 暫停所有搶答";
+                btnLock.className = "w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded shadow";
+                statusBadge.innerText = "開放搶答中";
+                statusBadge.className = "px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-bold animate-pulse";
+            }
+
+            if (state.sessionData.winnerUid) {
+                const winner = state.participants.find(p => p.uid === state.sessionData.winnerUid);
+                winnerName.innerText = winner ? winner.name : "未知";
+                winnerAlert.classList.remove('hidden');
+                
+                renderHostParticipants();
+            } else {
+                winnerAlert.classList.add('hidden');
+                renderHostParticipants();
+            }
+        }
+
+        // --- 初始化與權限驗證 ---
+
+        async function initAuth() {
+            document.getElementById('userInfo').innerText = "驗證中...";
+            try {
+                // 強制執行匿名登入
+                await signInAnonymously(auth);
+            } catch (error) {
+                console.error("Auth error:", error);
+                
+                // 處理 auth/configuration-not-found 錯誤 (未啟用匿名登入)
+                if (error.code === 'auth/configuration-not-found' || error.code === 'auth/operation-not-allowed') {
+                    document.getElementById('userInfo').innerText = "驗證失敗：未啟用匿名登入";
+                    const errBox = document.getElementById('auth-error-message');
+                    if(errBox) errBox.classList.remove('hidden');
+                    showToast('請至 Firebase 啟用匿名登入', 'error');
+                } else {
+                    document.getElementById('userInfo').innerText = "驗證失敗 (請確保 Firebase 已正確設定)";
+                }
+            }
+        }
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                state.user = user;
+                const isAnon = user.isAnonymous ? "連線成功" : "老師";
+                document.getElementById('userInfo').innerText = `${isAnon}`;
+                
+                // 驗證成功時隱藏錯誤提示
+                const errBox = document.getElementById('auth-error-message');
+                if(errBox) errBox.classList.add('hidden');
+                
+                const urlParams = new URLSearchParams(window.location.search);
+                const codeParam = urlParams.get('code');
+                if (codeParam && codeParam.length === 6) {
+                    document.getElementById('join-session-code').value = codeParam;
+                    showView('view-student-join');
+                }
+
+            } else {
+                state.user = null;
+                document.getElementById('userInfo').innerText = "未連線";
+            }
+        });
+
+        // 綁定到 window 使 HTML onclick 可以呼叫
+        window.app = {
+            showView,
+            createSession,
+            joinAsStudent,
+            joinAsDisplay,
+            toggleGlobalLock,
+            resetBuzzer,
+            adjustScore,
+            toggleParticipantLock,
+            buzzIn
+        };
+
+        // 啟動驗證
+        initAuth();
+
+    </script>
+</body>
+</html>
